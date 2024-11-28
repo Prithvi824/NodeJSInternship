@@ -1,10 +1,8 @@
 ## How to run:
 
 1) Create a .env file with the following keys and fill their values:
-    - `SQL_PASSWORD`=`<SQL Password>`
-    - `DATABASE_NAME`="school_management"
-    - `SQL_HOST`=`<SQL Host>`
-    - `SQL_USER`=`<SQL User>`
+    - `DATABASE_URL`="<URL_TO_CONNECT_TO>"
+
     
 2) Install dependencies:
 ```bash
