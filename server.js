@@ -1,102 +1,83 @@
 import express from 'express';
-import mysql from 'mysql2/promise';
-import {config} from "dotenv"
-config()
+import pkg from 'pg';
+import dotenv from 'dotenv';
 
-// Initialize Express app
+dotenv.config();
+
 const app = express();
-app.use(express.json()); // To parse JSON requests
+app.use(express.json());
+const { Pool } = pkg
 
-// Function to calculate the distance between two coordinates
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Earth radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c; // Distance in km
-    return distance;
-  };
-
-// MySQL connection setup using async/await
-const db = await mysql.createConnection({
-  host: process.env.SQL_HOST,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  database: process.env.DATABASE_NAME
+// Connect to Supabase Postgres
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
-app.get("/", async (req, res) => {
-    res.send(`<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>API Endpoints</title>
-    </head>
-    <body>
-      <h1>Welcome to the School Management API</h1>
-      <p>Use the following endpoints to interact with the API:</p>
-      <ul>
-        <li><strong>Add School:</strong> <code>POST /addSchool</code></li>
-        <li><strong>List Schools:</strong> <code>GET /listSchools?latitude=&longitude=</code></li>
-      </ul>
-      <p>Refer to the API documentation for more details on how to use these endpoints.</p>
-    </body>
-    </html>`)
-})
-
-// Set up a route to add a school
+// Add School API
 app.post('/addSchool', async (req, res) => {
   const { name, address, latitude, longitude } = req.body;
 
-  // Validate input data
-  if (!name || !address || !latitude || !longitude) {
+  // Input validation
+  if (!name || !address || latitude == null || longitude == null) {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
   try {
-    // Insert school data into the database
-    const [result] = await db.execute(
-      'INSERT INTO schools (name, address, latitude, longitude) VALUES (?, ?, ?, ?)', 
+    const result = await pool.query(
+      'INSERT INTO schools (name, address, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING *',
       [name, address, latitude, longitude]
     );
-    res.status(201).json({ message: 'School added successfully', schoolId: result.insertId });
-} catch (err) {
+    res.status(201).json({ message: 'School added successfully', school: result.rows[0] });
+  } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Error adding school' });
   }
 });
 
-// Set up a route to list schools sorted by proximity
+// List Schools API
 app.get('/listSchools', async (req, res) => {
   const { latitude, longitude } = req.query;
 
-  if (!latitude || !longitude) {
+  if (latitude == null || longitude == null) {
     return res.status(400).json({ error: 'Latitude and longitude are required' });
   }
 
   try {
-    // Query all schools from the database
-    const [schools] = await db.execute('SELECT * FROM schools');
+    const { rows: schools } = await pool.query('SELECT * FROM schools');
+    const userLat = parseFloat(latitude);
+    const userLon = parseFloat(longitude);
 
-    // Sort schools by proximity to the user's location
-    const sortedSchools = schools.map(school => ({
-      ...school,
-      distance: calculateDistance(latitude, longitude, school.latitude, school.longitude)
-    })).sort((a, b) => a.distance - b.distance);
+    // Calculate distances and sort
+    const sortedSchools = schools
+      .map((school) => {
+        const distance = calculateDistance(userLat, userLon, school.latitude, school.longitude);
+        return { ...school, distance };
+      })
+      .sort((a, b) => a.distance - b.distance);
 
-    res.status(200).json(sortedSchools);
+    res.status(200).json({ schools: sortedSchools });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Error fetching schools' });
   }
 });
 
-// Start the server
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Helper Function: Haversine Formula
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const R = 6371; // Earth's radius in km
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+}
+
+// Start server
+const PORT = process.env.PORT;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
