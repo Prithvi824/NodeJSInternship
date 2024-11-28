@@ -28,6 +28,26 @@ const db = await mysql.createConnection({
   database: process.env.DATABASE_NAME
 });
 
+app.get("/", async (req, res) => {
+    res.send(`<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>API Endpoints</title>
+    </head>
+    <body>
+      <h1>Welcome to the School Management API</h1>
+      <p>Use the following endpoints to interact with the API:</p>
+      <ul>
+        <li><strong>Add School:</strong> <code>POST /addSchool</code></li>
+        <li><strong>List Schools:</strong> <code>GET /listSchools?latitude=&longitude=</code></li>
+      </ul>
+      <p>Refer to the API documentation for more details on how to use these endpoints.</p>
+    </body>
+    </html>`)
+})
+
 // Set up a route to add a school
 app.post('/addSchool', async (req, res) => {
   const { name, address, latitude, longitude } = req.body;
@@ -76,7 +96,7 @@ app.get('/listSchools', async (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
